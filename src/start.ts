@@ -11,9 +11,9 @@ async function main() {
   try {
     assertConfig();
     const core = bootstrapCore();
-    const apiRouter = new ApiRouter(core.db, core.keyPool, core.usageClient, core.eventBus, core.connectionStore);
+    const apiRouter = new ApiRouter(core.db, core.keyPool, core.usageSync, core.eventBus, core.connectionStore);
     const httpServer = new HttpServer(core.toolRouter, apiRouter, core.eventBus, core.connectionStore);
-    const scheduler = new SchedulerManager(core.db, core.keyPool, core.usageClient, core.eventBus, core.connectionStore);
+    const scheduler = new SchedulerManager(core.db, core.keyPool, core.usageSync, core.eventBus, core.connectionStore);
 
     httpServer.start();
     scheduler.start();

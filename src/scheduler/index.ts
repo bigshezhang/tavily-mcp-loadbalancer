@@ -4,7 +4,6 @@ import { LogCleanupScheduler } from './log-cleanup.js';
 import { StatsBroadcastScheduler } from './stats-broadcast.js';
 import { AppDatabase } from '../data/database.js';
 import { KeyPool } from '../loadbalancer/key-pool.js';
-import { UsageClient } from '../client/usage-client.js';
 import { StatsService } from '../core/stats-service.js';
 import { EventBus } from '../core/event-bus.js';
 import { ConnectionStore } from '../core/connection-store.js';
@@ -15,9 +14,15 @@ export class SchedulerManager {
   private logCleanup: LogCleanupScheduler;
   private statsBroadcast: StatsBroadcastScheduler;
 
-  constructor(db: AppDatabase, keyPool: KeyPool, usageClient: UsageClient, eventBus: EventBus, connectionStore: ConnectionStore) {
+  constructor(
+    db: AppDatabase,
+    keyPool: KeyPool,
+    usageSync: UsageSyncScheduler,
+    eventBus: EventBus,
+    connectionStore: ConnectionStore
+  ) {
     this.quotaRefresher = new QuotaRefresher(db, keyPool);
-    this.usageSync = new UsageSyncScheduler(db, usageClient);
+    this.usageSync = usageSync;
     this.logCleanup = new LogCleanupScheduler(db);
     this.statsBroadcast = new StatsBroadcastScheduler(new StatsService(db, connectionStore), eventBus);
   }

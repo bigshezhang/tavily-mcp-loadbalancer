@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 
-export type EventType = 'request' | 'error' | 'key_status' | 'stats_update';
+export type EventType = 'request' | 'error' | 'key_status' | 'stats_update' | 'usage_sync';
 
 export interface EventPayload {
   type: EventType;

@@ -13,6 +13,8 @@ import LoginModal from './components/LoginModal.vue';
 import { useAuthStore } from './stores/auth';
 import { useApi } from './composables/useApi';
 import { useToast } from './composables/useToast';
+import { ElMessageBox } from 'element-plus';
+import type { UsageSyncEnqueueResult, UsageSyncQueueStatus } from './stores/keys';
 
 const authStore = useAuthStore();
 const api = useApi();
@@ -103,15 +105,41 @@ const handleToggleSidebar = () => {
 };
 
 const syncing = ref(false);
+const syncStatus = ref<UsageSyncQueueStatus | null>(null);
+let syncStatusTimer: ReturnType<typeof setInterval> | null = null;
 
-const handleSync = async () => {
+const fetchSyncStatus = async () => {
+  try {
+    syncStatus.value = await api.get<UsageSyncQueueStatus>('/api/settings/sync/status');
+  } catch {
+    // Keep the header usable if the status request temporarily fails.
+  }
+};
+
+const handleSync = async (mode: 'stale' | 'all') => {
   if (syncing.value) return;
+  if (mode === 'all') {
+    try {
+      await ElMessageBox.confirm(
+        '全部 Key 将进入低频后台队列。Key 较多时可能需要约一小时，是否继续？',
+        '同步全部配额',
+        { confirmButtonText: '加入队列', cancelButtonText: '取消', type: 'warning' }
+      );
+    } catch {
+      return;
+    }
+  }
   syncing.value = true;
   try {
-    await api.post('/api/settings/sync');
-    toast.success('配额同步完成');
+    const result = await api.post<UsageSyncEnqueueResult>('/api/settings/sync', { mode });
+    const parts = [`已加入 ${result.enqueued} 个 Key`];
+    if (result.deduplicated > 0) parts.push(`自动去重 ${result.deduplicated} 个`);
+    if (result.promoted > 0) parts.push(`提升优先级 ${result.promoted} 个`);
+    if (result.enqueued > 0) toast.success(parts.join('，'));
+    else toast.info(parts.join('，'));
+    syncStatus.value = result.queue;
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '同步失败');
+    toast.error(err instanceof Error ? err.message : '加入同步队列失败');
   } finally {
     syncing.value = false;
   }
@@ -130,10 +158,13 @@ const checkResponsive = () => {
 onMounted(() => {
   checkAuthRequired();
   checkResponsive();
+  fetchSyncStatus();
+  syncStatusTimer = setInterval(fetchSyncStatus, 10000);
   window.addEventListener('resize', checkResponsive);
 });
 
 onUnmounted(() => {
+  if (syncStatusTimer) clearInterval(syncStatusTimer);
   window.removeEventListener('resize', checkResponsive);
 });
 </script>
@@ -161,8 +192,10 @@ onUnmounted(() => {
             :title="currentTitle"
             :collapsed="isSidebarCollapsed"
             :syncing="syncing"
+            :sync-status="syncStatus"
             @toggle-sidebar="handleToggleSidebar"
-            @sync="handleSync"
+            @sync-stale="handleSync('stale')"
+            @sync-all="handleSync('all')"
           />
         </template>
 

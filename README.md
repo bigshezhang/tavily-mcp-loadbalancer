@@ -11,6 +11,12 @@
 <details>
 <summary>更新日志</summary>
 
+### v3.1.0 (2026-07-24)
+- **低频配额队列**：所有 `/usage` 请求统一排队、去重并遵守 Tavily 独立限流
+- **双同步入口**：支持同步过期 Key 和后台同步全部 Key
+- **异步 Key 测试**：勾选测试进入高优先级队列，成功后同时更新额度
+- **额度显示修复**：免费账户正确同步 1000 上限，未知额度不再显示为无限
+
 ### v3.0.0 (2025-01-06)
 - **官方 MCP 对齐**：完整适配 tavily-mcp v0.2.12 工具参数与行为
 - **智能错误处理**：精细区分配额耗尽、速率限制与网络问题
@@ -241,9 +247,10 @@ curl -X POST http://localhost:60002/mcp \
 | `MAX_CONCURRENT_REQUESTS` | 最大并发 | 4 |
 | `REQUEST_TIMEOUT` | 请求超时（ms） | 30000 |
 | `MAX_KEY_ERRORS` | Key 最大错误次数 | 5 |
-| `USAGE_SYNC_DELAY_MS` | 批量同步额度时每个 Key 之间的间隔（ms） | 1200 |
-| `USAGE_SYNC_RETRY_DELAY_MS` | 额度同步被限流后的重试等待时间（ms） | 10000 |
-| `USAGE_SYNC_MAX_RETRIES` | 额度同步被限流后的最大重试次数 | 1 |
+| `USAGE_SYNC_MIN_INTERVAL_MS` | `/usage` 队列请求最小间隔（ms） | 75000 |
+| `USAGE_SYNC_RETRY_DELAY_MS` | 上游未返回 `retry-after` 时的全局冷却（ms） | 600000 |
+| `USAGE_SYNC_STALE_AFTER_MS` | 配额数据过期时间（ms） | 21600000 |
+| `USAGE_SYNC_SCHEDULE_INTERVAL_MS` | 自动扫描过期 Key 的间隔（ms） | 21600000 |
 | `LOG_RETENTION_DAYS` | 日志保留天数 | 30 |
 | `LOG_LEVEL` | 日志级别 | info |
 | `TAVILY_API_KEYS` | 初始 Key（逗号分隔） | - |

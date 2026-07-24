@@ -8,6 +8,7 @@ import { EventBus } from './event-bus.js';
 import { ConnectionStore } from './connection-store.js';
 import { getRuntimeConfig, updateRuntimeConfig } from '../utils/runtime-config.js';
 import { logger } from '../utils/logger.js';
+import { UsageSyncScheduler } from '../scheduler/usage-sync.js';
 
 export const bootstrapCore = () => {
   const runtime = getRuntimeConfig();
@@ -33,8 +34,9 @@ export const bootstrapCore = () => {
   const connectionStore = new ConnectionStore();
   const keyPool = new KeyPool(db);
   const usageClient = new UsageClient(db);
+  const usageSync = new UsageSyncScheduler(db, usageClient, eventBus);
   const logManager = new LogManager(db);
-  const tavilyClient = new TavilyClient(db, keyPool, usageClient, logManager, undefined, eventBus);
+  const tavilyClient = new TavilyClient(db, keyPool, logManager, undefined, eventBus);
   const toolRouter = new ToolRouter(tavilyClient);
 
   // seed keys from env if database empty
@@ -47,6 +49,7 @@ export const bootstrapCore = () => {
     db,
     keyPool,
     usageClient,
+    usageSync,
     logManager,
     tavilyClient,
     toolRouter,

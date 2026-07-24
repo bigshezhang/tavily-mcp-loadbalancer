@@ -46,6 +46,17 @@ export interface MonthlyQuotaRecord {
   updated_at: string;
 }
 
+export type UsageSyncStatus = 'never' | 'pending' | 'running' | 'success' | 'error' | 'rate_limited';
+
+export interface UsageSyncStateRecord {
+  key_id: number;
+  last_success_at: string | null;
+  last_attempt_at: string | null;
+  last_status: UsageSyncStatus;
+  last_error: string | null;
+  updated_at: string;
+}
+
 export interface RequestLogRecord {
   id: number;
   key_id: number | null;
@@ -134,9 +145,20 @@ export class AppDatabase {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS usage_sync_state (
+        key_id INTEGER PRIMARY KEY,
+        last_success_at DATETIME,
+        last_attempt_at DATETIME,
+        last_status TEXT NOT NULL DEFAULT 'pending',
+        last_error TEXT,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (key_id) REFERENCES api_keys(id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_request_logs_created_at ON request_logs(created_at);
       CREATE INDEX IF NOT EXISTS idx_request_logs_key_id ON request_logs(key_id);
       CREATE INDEX IF NOT EXISTS idx_request_logs_tool_name ON request_logs(tool_name);
+      CREATE INDEX IF NOT EXISTS idx_usage_sync_state_status ON usage_sync_state(last_status);
     `);
 
     // Migration: add response_data column if not exists
@@ -146,6 +168,19 @@ export class AppDatabase {
       this.db.exec('ALTER TABLE request_logs ADD COLUMN response_data TEXT');
       logger.info('Migration: added response_data column to request_logs');
     }
+
+    // Backfill known successful remote quota synchronizations for existing databases.
+    this.db.exec(`
+      INSERT OR IGNORE INTO usage_sync_state (
+        key_id, last_success_at, last_attempt_at, last_status, last_error, updated_at
+      )
+      SELECT key_id, MAX(created_at), MAX(created_at), 'success', NULL, MAX(created_at)
+      FROM request_logs
+      WHERE key_id IS NOT NULL
+        AND tool_name = 'sync_quota'
+        AND response_status = 'success'
+      GROUP BY key_id
+    `);
   }
 
   close(): void {
@@ -273,6 +308,7 @@ export class AppDatabase {
 
   deleteApiKey(id: number): void {
     const deleteTransaction = this.db.transaction((keyId: number) => {
+      this.db.prepare('DELETE FROM usage_sync_state WHERE key_id = ?').run(keyId);
       this.db.prepare('DELETE FROM request_logs WHERE key_id = ?').run(keyId);
       this.db.prepare('DELETE FROM monthly_quotas WHERE key_id = ?').run(keyId);
       this.db.prepare('DELETE FROM api_keys WHERE id = ?').run(keyId);
@@ -411,6 +447,65 @@ export class AppDatabase {
       .prepare('SELECT * FROM monthly_quotas WHERE key_id = ? AND year_month = ?')
       .get(keyId, yearMonth);
     return row ? (row as MonthlyQuotaRecord) : null;
+  }
+
+  getUsageSyncStateForKey(keyId: number): UsageSyncStateRecord | null {
+    const row = this.db.prepare('SELECT * FROM usage_sync_state WHERE key_id = ?').get(keyId);
+    return row ? (row as UsageSyncStateRecord) : null;
+  }
+
+  getUsageSyncStates(): UsageSyncStateRecord[] {
+    return this.db.prepare('SELECT * FROM usage_sync_state ORDER BY key_id ASC').all() as UsageSyncStateRecord[];
+  }
+
+  markUsageSyncPending(keyId: number): void {
+    this.upsertUsageSyncState(keyId, 'pending', null, false);
+  }
+
+  markUsageSyncRunning(keyId: number): void {
+    this.upsertUsageSyncState(keyId, 'running', null, true);
+  }
+
+  markUsageSyncSuccess(keyId: number): void {
+    const now = toIsoString();
+    this.db
+      .prepare(`
+        INSERT INTO usage_sync_state (
+          key_id, last_success_at, last_attempt_at, last_status, last_error, updated_at
+        ) VALUES (?, ?, ?, 'success', NULL, ?)
+        ON CONFLICT(key_id) DO UPDATE SET
+          last_success_at = excluded.last_success_at,
+          last_attempt_at = excluded.last_attempt_at,
+          last_status = 'success',
+          last_error = NULL,
+          updated_at = excluded.updated_at
+      `)
+      .run(keyId, now, now, now);
+  }
+
+  markUsageSyncFailure(keyId: number, status: 'error' | 'rate_limited', error: string | null): void {
+    this.upsertUsageSyncState(keyId, status, error, true);
+  }
+
+  private upsertUsageSyncState(
+    keyId: number,
+    status: UsageSyncStatus,
+    error: string | null,
+    attempted: boolean
+  ): void {
+    const now = toIsoString();
+    this.db
+      .prepare(`
+        INSERT INTO usage_sync_state (
+          key_id, last_success_at, last_attempt_at, last_status, last_error, updated_at
+        ) VALUES (?, NULL, ?, ?, ?, ?)
+        ON CONFLICT(key_id) DO UPDATE SET
+          last_attempt_at = CASE WHEN ? THEN excluded.last_attempt_at ELSE usage_sync_state.last_attempt_at END,
+          last_status = excluded.last_status,
+          last_error = excluded.last_error,
+          updated_at = excluded.updated_at
+      `)
+      .run(keyId, attempted ? now : null, status, error, now, attempted ? 1 : 0);
   }
 
   insertRequestLog(entry: Omit<RequestLogRecord, 'id' | 'created_at'>): void {

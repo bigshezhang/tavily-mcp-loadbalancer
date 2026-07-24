@@ -112,11 +112,11 @@ const quotaLimit = computed(() => {
               已用 {{ quotaUsed.toLocaleString() }}
             </el-tag>
             <el-tag type="success" effect="dark" size="large">
-              可用 {{ quotaRemaining === null ? '∞' : quotaRemaining.toLocaleString() }}
+              可用 {{ quotaRemaining === null ? '未知' : quotaRemaining.toLocaleString() }}
             </el-tag>
           </div>
           <div v-if="!loading" class="stat-meta">
-            {{ quotaLimit ? `限额: ${quotaLimit.toLocaleString()}` : '无限制' }}
+            {{ quotaLimit ? `限额: ${quotaLimit.toLocaleString()}` : '部分 Key 配额待同步' }}
           </div>
         </div>
       </el-card>

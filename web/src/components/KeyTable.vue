@@ -58,6 +58,27 @@ const statusType = (status: string) => {
   }
 }
 
+const quotaLimitLabel = (row: KeyRecord) => {
+  if (row.quota?.quota_limit !== null && row.quota?.quota_limit !== undefined) {
+    return row.quota.quota_limit
+  }
+  if (row.usage_sync?.last_status === 'pending' || row.usage_sync?.last_status === 'running' || row.usage_sync?.last_status === 'never') {
+    return '待同步'
+  }
+  return '未知'
+}
+
+const syncStatusLabel = (row: KeyRecord) => {
+  switch (row.usage_sync?.last_status) {
+    case 'pending': return '队列中'
+    case 'running': return '同步中'
+    case 'success': return row.usage_sync.last_success_at ? `已同步 ${new Date(row.usage_sync.last_success_at).toLocaleString()}` : '已同步'
+    case 'rate_limited': return '等待限流恢复'
+    case 'error': return row.usage_sync.last_error ? `同步失败：${row.usage_sync.last_error}` : '同步失败'
+    default: return '尚未同步'
+  }
+}
+
 const handleSelectionChange = (selection: KeyRecord[]) => {
   emit('selection-change', selection)
 }
@@ -124,12 +145,12 @@ const handleSelectionChange = (selection: KeyRecord[]) => {
       </template>
     </el-table-column>
 
-    <el-table-column label="配额" width="100">
+    <el-table-column label="配额" min-width="150">
       <template #default="{ row }">
-        <span v-if="row.quota">
-           {{ row.quota.used_count }} / {{ row.quota.quota_limit !== null ? row.quota.quota_limit : '∞' }}
-        </span>
-        <span v-else>-</span>
+        <div class="quota-cell" :title="syncStatusLabel(row)">
+          <span>{{ row.quota?.used_count ?? 0 }} / {{ quotaLimitLabel(row) }}</span>
+          <small>{{ syncStatusLabel(row) }}</small>
+        </div>
       </template>
     </el-table-column>
 
@@ -203,6 +224,20 @@ const handleSelectionChange = (selection: KeyRecord[]) => {
 
 .stats-col {
   font-family: monospace;
+}
+
+.quota-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.quota-cell small {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .success { color: var(--color-success); }

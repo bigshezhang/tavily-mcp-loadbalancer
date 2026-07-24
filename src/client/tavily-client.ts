@@ -3,7 +3,6 @@ import { KeyPool } from '../loadbalancer/key-pool.js';
 import { classifyError, classifyResponsePayload, ErrorClassification } from '../loadbalancer/error-classifier.js';
 import { AppDatabase } from '../data/database.js';
 import { LogManager } from '../data/log-manager.js';
-import { UsageClient } from './usage-client.js';
 import { defaultRetryConfig, computeDelay, sleep, RetryConfig } from './retry-handler.js';
 import { getRuntimeConfig } from '../utils/runtime-config.js';
 import { EventBus } from '../core/event-bus.js';
@@ -32,7 +31,6 @@ export class TavilyClient {
   constructor(
     private db: AppDatabase,
     private keyPool: KeyPool,
-    private usageClient: UsageClient,
     private logManager: LogManager,
     retryConfig: RetryConfig = defaultRetryConfig,
     private eventBus?: EventBus
@@ -221,26 +219,10 @@ export class TavilyClient {
           }
 
           if (status === 429) {
-            let remaining = Infinity;
-            try {
-              const usage = await this.usageClient.fetchUsageAndSync(key.id, key.key_value);
-              remaining = usage.account.plan_limit !== null
-                ? usage.account.plan_limit - usage.account.plan_usage
-                : Infinity;
-            } catch {
-              // ignore usage sync errors
-            }
-
-            if (remaining <= 0) {
-              classification = {
-                ...classification,
-                type: 'quota_exceeded',
-                shouldRetry: false,
-                shouldDisableKey: true,
-                message: 'API quota exceeded',
-                incrementErrorCount: true,
-              };
-            } else {
+            // Do not probe /usage here: it has a much stricter independent rate limit.
+            // Preserve an explicit quota classification from the response body; otherwise
+            // treat HTTP 429 as transient rate limiting.
+            if (classification.type !== 'quota_exceeded') {
               classification = {
                 ...classification,
                 type: 'rate_limit',
