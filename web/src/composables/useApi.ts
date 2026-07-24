@@ -40,8 +40,10 @@ export const useApi = () => {
 
     const sentToken = Boolean(headers["X-Admin-Token"])
 
+    // 禁用浏览器对 API 的缓存（避免 ETag 304 干扰鉴权/数据刷新）
     const response = await fetch(url, {
       ...options,
+      cache: 'no-store',
       headers,
       body,
     })

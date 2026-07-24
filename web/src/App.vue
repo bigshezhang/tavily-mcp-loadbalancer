@@ -82,10 +82,14 @@ watch(() => authStore.authRequired, (required) => {
   }
 });
 
+const contentKey = ref(0);
+
 const handleLoggedIn = () => {
+  // 关闭登录框后刷新同步状态，并用 contentKey 强制 remount 主视图以重新拉数
+  // 不要 window.location.reload()，否则会整页刷新形成登录死循环
   showLoginModal.value = false;
-  // Refresh data after login
-  window.location.reload();
+  contentKey.value += 1;
+  fetchSyncStatus();
 };
 
 // View Titles
@@ -189,9 +193,9 @@ onUnmounted(() => {
       <el-icon class="loading-icon"><i class="el-icon-loading" /></el-icon>
     </div>
 
-    <!-- Main app -->
+    <!-- Main app：未登录且需要鉴权时不挂载会打受保护 API 的主视图 -->
     <template v-else>
-      <MainLayout>
+      <MainLayout v-if="!authStore.authRequired" :key="contentKey">
         <template #sidebar>
           <SideNav
             v-model:currentView="currentView"
@@ -212,7 +216,7 @@ onUnmounted(() => {
           />
         </template>
 
-        <div class="view-content">
+        <div class="view-content" :key="contentKey">
           <DashboardView v-if="currentView === 'dashboard'" />
           <KeysView v-else-if="currentView === 'keys'" />
           <StatsView v-else-if="currentView === 'stats'" />
