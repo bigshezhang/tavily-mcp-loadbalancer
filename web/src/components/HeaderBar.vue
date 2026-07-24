@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { Fold, Expand, Refresh } from '@element-plus/icons-vue';
+import { Fold, Expand, Refresh, RefreshRight } from '@element-plus/icons-vue';
 
 defineProps<{
   title: string;
   subtitle?: string;
   collapsed: boolean;
   syncing?: boolean;
+  syncStatus?: {
+    pending: number;
+    running: number;
+    blockedUntil: string | null;
+  } | null;
 }>();
 
 defineEmits<{
   (e: 'toggleSidebar'): void;
-  (e: 'sync'): void;
+  (e: 'syncStale'): void;
+  (e: 'syncAll'): void;
 }>();
 </script>
 
@@ -29,11 +35,18 @@ defineEmits<{
 
     <div class="right-section">
       <slot name="actions">
-        <!-- Default actions if not overridden -->
-        <el-tooltip content="同步配额" placement="bottom">
-          <button class="sync-btn" :disabled="syncing" @click="$emit('sync')">
+        <span v-if="syncStatus && (syncStatus.pending > 0 || syncStatus.running > 0)" class="queue-status">
+          配额队列 {{ syncStatus.pending }} 等待<span v-if="syncStatus.running"> / 1 执行</span>
+        </span>
+        <el-tooltip content="仅将未同步或已过期的 Key 加入后台队列" placement="bottom">
+          <button class="sync-btn" :disabled="syncing" aria-label="同步过期配额" @click="$emit('syncStale')">
             <span v-if="syncing" class="sync-spinner"></span>
             <el-icon v-else><Refresh /></el-icon>
+          </button>
+        </el-tooltip>
+        <el-tooltip content="将全部 Key 加入低频后台队列" placement="bottom">
+          <button class="sync-btn" :disabled="syncing" aria-label="同步全部配额" @click="$emit('syncAll')">
+            <el-icon><RefreshRight /></el-icon>
           </button>
         </el-tooltip>
       </slot>
@@ -101,6 +114,12 @@ defineEmits<{
   gap: var(--space-2);
 }
 
+.queue-status {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
 /* Mobile responsive adjustments if needed can go here */
 @media (max-width: 768px) {
   .header {
@@ -108,6 +127,10 @@ defineEmits<{
   }
   
   .page-subtitle {
+    display: none;
+  }
+
+  .queue-status {
     display: none;
   }
 }

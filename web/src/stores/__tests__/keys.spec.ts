@@ -159,4 +159,65 @@ describe('keys store', () => {
 
     expect(store.keys).toEqual([])
   })
+
+  it('imports, edits and queues batch operations', async () => {
+    const store = useKeysStore()
+    store.keys = [
+      {
+        id: 7,
+        key_preview: 'tvly-****',
+        display_name: 'Before',
+        status: 'disabled',
+        weight: 1,
+        error_count: 0,
+        max_errors: 5,
+        total_requests: 0,
+        successful_requests: 0,
+        failed_requests: 0,
+        last_used_at: null,
+        last_error_at: null,
+        last_error_message: null,
+        created_at: '2026-01-01',
+        updated_at: '2026-01-01',
+        quota: null,
+      },
+    ]
+    const queue = {
+      status: 'queued' as const,
+      requested: 1,
+      enqueued: 1,
+      deduplicated: 0,
+      promoted: 0,
+      missing: 0,
+      queue: {
+        pending: 1,
+        running: 0,
+        runningKeyId: null,
+        blockedUntil: null,
+        nextRequestAt: null,
+        lastRequestAt: null,
+      },
+    }
+    apiMock.post
+      .mockResolvedValueOnce({ inserted: 2 })
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce({ status: 'ok' })
+      .mockResolvedValueOnce(queue)
+    apiMock.put.mockResolvedValue({ status: 'ok' })
+    apiMock.get.mockResolvedValue(queue.queue)
+
+    expect(await store.importKeys(['one', 'two'])).toBe(2)
+    await store.updateKey(7, { display_name: 'After' })
+    expect(store.keys[0].display_name).toBe('After')
+    await store.batchEnable([7])
+    expect(store.keys[0].status).toBe('active')
+    await store.batchDisable([7])
+    expect(store.keys[0].status).toBe('disabled')
+    expect(await store.batchTest([7])).toEqual(queue)
+    expect(await store.fetchUsageSyncStatus()).toEqual(queue.queue)
+
+    expect(apiMock.post).toHaveBeenNthCalledWith(1, '/api/keys/import', { keys: ['one', 'two'] })
+    expect(apiMock.put).toHaveBeenCalledWith('/api/keys/7', { display_name: 'After' })
+    expect(apiMock.get).toHaveBeenCalledWith('/api/settings/sync/status')
+  })
 })

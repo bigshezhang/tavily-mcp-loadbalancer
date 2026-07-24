@@ -17,6 +17,7 @@ export class StatsService {
     const quotas = this.db.getMonthlyQuotas(yearMonth);
     const totalUsed = quotas.reduce((sum, q) => sum + q.used_count, 0);
     const totalLimit = quotas.reduce((sum, q) => sum + (q.quota_limit || 0), 0);
+    const unknownLimitKeys = quotas.filter((q) => q.quota_limit === null).length;
 
     const totalRequests = this.db.queryRequestLogs({ page: 1, limit: 1 }).total;
     const successCount = this.db.queryRequestLogs({ page: 1, limit: 1, status: 'success' }).total;
@@ -49,8 +50,9 @@ export class StatsService {
       },
       quota: {
         used: totalUsed,
-        limit: totalLimit || null,
-        remaining: totalLimit ? Math.max(0, totalLimit - totalUsed) : null,
+        limit: unknownLimitKeys === 0 && totalLimit > 0 ? totalLimit : null,
+        remaining: unknownLimitKeys === 0 && totalLimit > 0 ? Math.max(0, totalLimit - totalUsed) : null,
+        unknown_keys: unknownLimitKeys,
       },
     };
   }

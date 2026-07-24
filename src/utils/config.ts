@@ -44,9 +44,12 @@ export const config = {
   maxConcurrentRequests: parseNumber(process.env.MAX_CONCURRENT_REQUESTS, 4),
   requestTimeoutMs: parseNumber(process.env.REQUEST_TIMEOUT, 30000),
   maxKeyErrors: parseNumber(process.env.MAX_KEY_ERRORS, 5),
-  usageSyncDelayMs: parseNumber(process.env.USAGE_SYNC_DELAY_MS, 1200),
-  usageSyncRetryDelayMs: parseNumber(process.env.USAGE_SYNC_RETRY_DELAY_MS, 10000),
-  usageSyncMaxRetries: parseNumber(process.env.USAGE_SYNC_MAX_RETRIES, 1),
+  // Tavily's /usage endpoint is limited to 10 requests per 10 minutes.
+  // A 75 second interval keeps the process below that ceiling with headroom.
+  usageSyncMinIntervalMs: parseNumber(process.env.USAGE_SYNC_MIN_INTERVAL_MS, 75000),
+  usageSyncRetryDelayMs: parseNumber(process.env.USAGE_SYNC_RETRY_DELAY_MS, 10 * 60 * 1000),
+  usageSyncStaleAfterMs: parseNumber(process.env.USAGE_SYNC_STALE_AFTER_MS, 6 * 60 * 60 * 1000),
+  usageSyncScheduleIntervalMs: parseNumber(process.env.USAGE_SYNC_SCHEDULE_INTERVAL_MS, 6 * 60 * 60 * 1000),
   adminPassword: process.env.ADMIN_PASSWORD || '',
   enableWebUI: parseBoolean(process.env.ENABLE_WEB_UI, true),
   logLevel: (process.env.LOG_LEVEL || 'info').toLowerCase(),

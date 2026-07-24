@@ -12,6 +12,36 @@ export interface KeyQuotaSummary {
   map_count: number
 }
 
+export type UsageSyncStateStatus = 'never' | 'pending' | 'running' | 'success' | 'error' | 'rate_limited'
+
+export interface UsageSyncState {
+  key_id: number
+  last_success_at: string | null
+  last_attempt_at: string | null
+  last_status: UsageSyncStateStatus
+  last_error: string | null
+  updated_at: string
+}
+
+export interface UsageSyncQueueStatus {
+  pending: number
+  running: number
+  runningKeyId: number | null
+  blockedUntil: string | null
+  nextRequestAt: string | null
+  lastRequestAt: string | null
+}
+
+export interface UsageSyncEnqueueResult {
+  status: 'queued'
+  requested: number
+  enqueued: number
+  deduplicated: number
+  promoted: number
+  missing: number
+  queue: UsageSyncQueueStatus
+}
+
 export interface KeyRecord {
   id: number
   key_preview: string
@@ -28,6 +58,7 @@ export interface KeyRecord {
   last_error_message: string | null
   created_at: string
   updated_at: string
+  usage_sync?: UsageSyncState
   quota: KeyQuotaSummary | null
 }
 
@@ -36,13 +67,6 @@ export interface KeyCreatePayload {
   display_name?: string
   weight?: number
   max_errors?: number
-}
-
-export interface TestResult {
-  id: number
-  status: 'success' | 'error'
-  error_type?: 'auth' | 'network' | null
-  error_message?: string | null
 }
 
 export const useKeysStore = defineStore('keys', () => {
@@ -109,9 +133,12 @@ export const useKeysStore = defineStore('keys', () => {
     keys.value = keys.value.map((key) => (selected.has(key.id) ? { ...key, status: 'disabled' } : key))
   }
 
-  const batchTest = async (ids: number[]): Promise<TestResult[]> => {
-    const data = await api.post<{ results: TestResult[] }>('/api/keys/batch/test', { ids })
-    return data.results || []
+  const batchTest = async (ids: number[]): Promise<UsageSyncEnqueueResult> => {
+    return api.post<UsageSyncEnqueueResult>('/api/keys/batch/test', { ids })
+  }
+
+  const fetchUsageSyncStatus = async (): Promise<UsageSyncQueueStatus> => {
+    return api.get<UsageSyncQueueStatus>('/api/settings/sync/status')
   }
 
   return {
@@ -127,5 +154,6 @@ export const useKeysStore = defineStore('keys', () => {
     batchEnable,
     batchDisable,
     batchTest,
+    fetchUsageSyncStatus,
   }
 })

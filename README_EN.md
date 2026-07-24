@@ -11,6 +11,12 @@ A Tavily MCP server with multi-API key load balancing, providing SSE and streama
 <details>
 <summary>Changelog</summary>
 
+### v3.1.0 (2026-07-24)
+- **Low-rate quota queue**: All `/usage` calls are queued, deduplicated, and globally rate limited
+- **Two sync modes**: Queue stale keys only or enqueue every key in the background
+- **Asynchronous key tests**: Selected tests use the priority queue and persist quota data on success
+- **Quota display fix**: Free-plan limits sync correctly and unknown limits are no longer shown as unlimited
+
 ### v3.0.0 (2025-01-06)
 - **Official MCP Parity**: Fully aligned with tavily-mcp v0.2.12 tool schemas
 - **Smart Error Handling**: Differentiates quota exhaustion, rate limits, and network errors
@@ -241,9 +247,10 @@ curl -X POST http://localhost:60002/mcp \
 | `MAX_CONCURRENT_REQUESTS` | Max concurrency | 4 |
 | `REQUEST_TIMEOUT` | Request timeout (ms) | 30000 |
 | `MAX_KEY_ERRORS` | Max errors before disabling | 5 |
-| `USAGE_SYNC_DELAY_MS` | Delay between keys during quota sync (ms) | 1200 |
-| `USAGE_SYNC_RETRY_DELAY_MS` | Retry delay after quota sync rate limiting (ms) | 10000 |
-| `USAGE_SYNC_MAX_RETRIES` | Max retries after quota sync rate limiting | 1 |
+| `USAGE_SYNC_MIN_INTERVAL_MS` | Minimum interval between `/usage` queue requests (ms) | 75000 |
+| `USAGE_SYNC_RETRY_DELAY_MS` | Global cooldown when `retry-after` is absent (ms) | 600000 |
+| `USAGE_SYNC_STALE_AFTER_MS` | Age at which quota data becomes stale (ms) | 21600000 |
+| `USAGE_SYNC_SCHEDULE_INTERVAL_MS` | Interval for automatically scanning stale keys (ms) | 21600000 |
 | `LOG_RETENTION_DAYS` | Log retention days | 30 |
 | `LOG_LEVEL` | Log level | info |
 | `TAVILY_API_KEYS` | Seed keys (comma-separated) | - |

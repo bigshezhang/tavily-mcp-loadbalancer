@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useKeysStore, type KeyRecord } from '../stores/keys'
 import KeyTable from '../components/KeyTable.vue'
 import AddKeyDialog from '../components/AddKeyDialog.vue'
@@ -30,8 +30,26 @@ const fetchKeys = async () => {
   }
 }
 
+let syncPollTimer: ReturnType<typeof setInterval> | null = null
+
+const refreshSyncingKeys = async () => {
+  try {
+    const status = await keysStore.fetchUsageSyncStatus()
+    if (status.pending > 0 || status.running > 0) {
+      await keysStore.fetchKeys()
+    }
+  } catch {
+    // The normal page refresh path will surface API errors when needed.
+  }
+}
+
 onMounted(() => {
   fetchKeys()
+  syncPollTimer = setInterval(refreshSyncingKeys, 10000)
+})
+
+onUnmounted(() => {
+  if (syncPollTimer) clearInterval(syncPollTimer)
 })
 
 const handleEnable = async (id: number) => {
@@ -141,19 +159,14 @@ const handleBatchTest = async () => {
   if (!hasSelection.value) return
   batchTestLoading.value = true
   try {
-    const results = await keysStore.batchTest(selectedIds.value)
-    const total = results.length
-    const successCount = results.filter((item) => item.status === 'success').length
-    const errorCount = total - successCount
-    const authCount = results.filter((item) => item.error_type === 'auth').length
-    const networkCount = results.filter((item) => item.error_type === 'network').length
-    if (errorCount === 0) {
-      success(`批量测试完成：${successCount}/${total} 成功`)
-    } else {
-      info(`批量测试完成：成功 ${successCount}，失败 ${errorCount}（认证 ${authCount} / 网络 ${networkCount}）`)
-    }
+    const result = await keysStore.batchTest(selectedIds.value)
+    await keysStore.fetchKeys()
+    const parts = [`已加入 ${result.enqueued} 个测试任务`]
+    if (result.deduplicated > 0) parts.push(`自动去重 ${result.deduplicated} 个`)
+    if (result.promoted > 0) parts.push(`提升优先级 ${result.promoted} 个`)
+    info(parts.join('，'))
   } catch (err) {
-    error(err instanceof Error ? err.message : '批量测试失败')
+    error(err instanceof Error ? err.message : '加入测试队列失败')
   } finally {
     batchTestLoading.value = false
   }

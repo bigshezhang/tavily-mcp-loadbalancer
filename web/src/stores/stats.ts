@@ -27,6 +27,7 @@ export interface QuotaStats {
   used: number
   limit: number | null
   remaining: number | null
+  unknown_keys?: number
 }
 
 export interface StatsOverview {

@@ -1,7 +1,6 @@
 import axios from 'axios';
 import { AppDatabase } from '../data/database.js';
 import { logger } from '../utils/logger.js';
-import { config } from '../utils/config.js';
 import { getCurrentQuotaPeriod } from '../utils/date.js';
 
 // Tavily API actual response format
@@ -21,30 +20,8 @@ export interface TavilyUsageApiResponse {
   };
 }
 
-// Normalized usage data for internal use
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-const isRetriableUsageError = (error: unknown): boolean => {
-  if (!axios.isAxiosError(error)) return false;
-  const status = error.response?.status;
-  if (status === 429) return true;
-
-  const data = error.response?.data;
-  const message = typeof data === 'string'
-    ? data
-    : JSON.stringify(data ?? error.message);
-  const normalized = message.toLowerCase();
-  return normalized.includes('excessive requests') || normalized.includes('rate limit');
-};
-
-const retryDelayFromError = (error: unknown): number => {
-  if (!axios.isAxiosError(error)) return config.usageSyncRetryDelayMs;
-  const retryAfter = error.response?.headers?.['retry-after'];
-  const retryAfterSeconds = Array.isArray(retryAfter) ? Number(retryAfter[0]) : Number(retryAfter);
-  return Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-    ? retryAfterSeconds * 1000
-    : config.usageSyncRetryDelayMs;
-};
+const finiteNumberOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) ? value : null;
 
 export class UsageClient {
   constructor(private db: AppDatabase) {}
@@ -62,25 +39,16 @@ export class UsageClient {
   }
 
   async fetchUsageAndSync(keyId: number, apiKey: string): Promise<TavilyUsageApiResponse> {
-    let response: TavilyUsageApiResponse;
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        response = await this.fetchUsage(apiKey);
-        break;
-      } catch (error: unknown) {
-        if (attempt >= config.usageSyncMaxRetries || !isRetriableUsageError(error)) {
-          throw error;
-        }
-        const delayMs = retryDelayFromError(error);
-        logger.warn('Usage sync rate limited, retrying', { keyId, attempt: attempt + 1, delayMs });
-        await sleep(delayMs);
-      }
-    }
+    const response = await this.fetchUsage(apiKey);
     const yearMonth = getCurrentQuotaPeriod();
 
-    // Use account level usage data
-    const quotaLimit = response.account.plan_limit;
-    const usedCount = response.account.plan_usage;
+    // Free Researcher keys may report key.limit as null while account.plan_limit is 1000.
+    // Prefer account-level values and fall back to key-level values for compatibility.
+    const quotaLimit = finiteNumberOrNull(response.account?.plan_limit)
+      ?? finiteNumberOrNull(response.key?.limit);
+    const usedCount = finiteNumberOrNull(response.account?.plan_usage)
+      ?? finiteNumberOrNull(response.key?.usage)
+      ?? 0;
 
     logger.info('Usage sync result', {
       keyId,
@@ -98,13 +66,5 @@ export class UsageClient {
     });
 
     return response;
-  }
-
-  async syncUsageForKey(keyId: number, apiKey: string): Promise<void> {
-    try {
-      await this.fetchUsageAndSync(keyId, apiKey);
-    } catch (error: any) {
-      logger.warn('Failed to sync usage for key', { keyId, error: error?.message });
-    }
   }
 }
