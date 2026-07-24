@@ -109,6 +109,8 @@ const syncStatus = ref<UsageSyncQueueStatus | null>(null);
 let syncStatusTimer: ReturnType<typeof setInterval> | null = null;
 
 const fetchSyncStatus = async () => {
+  // 未登录时不要打受保护接口，否则会刷 401 / Unauthorized
+  if (authStore.requiresAuth && !authStore.token) return;
   try {
     syncStatus.value = await api.get<UsageSyncQueueStatus>('/api/settings/sync/status');
   } catch {
@@ -155,13 +157,24 @@ const checkResponsive = () => {
   }
 };
 
-onMounted(() => {
-  checkAuthRequired();
+onMounted(async () => {
   checkResponsive();
+  // 先确认是否需要登录，再决定是否轮询受保护接口
+  await checkAuthRequired();
   fetchSyncStatus();
   syncStatusTimer = setInterval(fetchSyncStatus, 10000);
   window.addEventListener('resize', checkResponsive);
 });
+
+// 登录成功写入 token 后立刻拉一次同步状态
+watch(
+  () => authStore.token,
+  (token) => {
+    if (token || !authStore.requiresAuth) {
+      fetchSyncStatus();
+    }
+  }
+);
 
 onUnmounted(() => {
   if (syncStatusTimer) clearInterval(syncStatusTimer);
